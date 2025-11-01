@@ -4,12 +4,6 @@ on:
   schedule:
     # Run every minute
     - cron: '*/1 * * * *'
-  workflow_run:
-    workflows: ["Build"]
-    types:
-      - completed
-    branches:
-      - '**'  # Triggers on all branches
   workflow_dispatch:  # Allows manual triggering from GitHub Actions UI
 
 permissions:
@@ -18,13 +12,6 @@ permissions:
 jobs:
   download-meteor-client:
     runs-on: ubuntu-latest
-    # Run if scheduled, manually triggered, or triggered by successful Build workflow
-    if: |
-      github.event_name == 'schedule' ||
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'workflow_run' &&
-       github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.name == 'Build')
     
     steps:
       - name: Checkout repository
