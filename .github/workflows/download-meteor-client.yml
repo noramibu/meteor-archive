@@ -7,6 +7,7 @@ on:
       - completed
     branches:
       - '**'  # Triggers on all branches
+  workflow_dispatch:  # Allows manual triggering from GitHub Actions UI
 
 permissions:
   contents: write  # Required to commit and push
@@ -14,10 +15,12 @@ permissions:
 jobs:
   download-meteor-client:
     runs-on: ubuntu-latest
-    # Only trigger on successful Build workflow, but NOT "Build Pull Request"
+    # Run if manually triggered OR if triggered by successful Build workflow
     if: |
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.name == 'Build'
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.name == 'Build')
     
     steps:
       - name: Checkout repository
