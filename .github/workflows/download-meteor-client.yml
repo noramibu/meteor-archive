@@ -1,6 +1,9 @@
 name: Download Meteor Client
 
 on:
+  schedule:
+    # Run every minute
+    - cron: '*/1 * * * *'
   workflow_run:
     workflows: ["Build"]
     types:
@@ -15,8 +18,9 @@ permissions:
 jobs:
   download-meteor-client:
     runs-on: ubuntu-latest
-    # Run if manually triggered OR if triggered by successful Build workflow
+    # Run if scheduled, manually triggered, or triggered by successful Build workflow
     if: |
+      github.event_name == 'schedule' ||
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'workflow_run' &&
        github.event.workflow_run.conclusion == 'success' &&
@@ -101,6 +105,7 @@ jobs:
           echo "build_num=$BUILD_NUM" >> $GITHUB_OUTPUT
           
       - name: Create version directory and save file
+        id: save_file
         run: |
           FILENAME="${{ steps.download.outputs.filename }}"
           MC_VERSION="${{ steps.download.outputs.mc_version }}"
@@ -113,17 +118,28 @@ jobs:
           # Create directory for Minecraft version
           mkdir -p "$MC_VERSION"
           
-          # Move file to version directory
-          mv "$FILENAME" "$MC_VERSION/"
+          # Check if file already exists
+          if [ -f "$MC_VERSION/$FILENAME" ]; then
+            echo "File $FILENAME already exists in $MC_VERSION/, skipping..."
+            echo "is_new=false" >> $GITHUB_OUTPUT
+            # Remove the downloaded file since we already have it
+            rm -f "$FILENAME"
+          else
+            echo "New file detected: $FILENAME"
+            echo "is_new=true" >> $GITHUB_OUTPUT
+            # Move file to version directory
+            mv "$FILENAME" "$MC_VERSION/"
+            echo "Saved $FILENAME to $MC_VERSION/"
+          fi
           
-          echo "Saved $FILENAME to $MC_VERSION/"
           ls -lh "$MC_VERSION/"
           
       - name: Commit and push changes
+        if: steps.save_file.outputs.is_new == 'true'
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           git add .
-          git diff --staged --quiet || git commit -m "Add Meteor Client build ${{ steps.download.outputs.build_num }} for Minecraft ${{ steps.download.outputs.mc_version }}"
+          git commit -m "Add Meteor Client build ${{ steps.download.outputs.build_num }} for Minecraft ${{ steps.download.outputs.mc_version }}"
           git push
 
