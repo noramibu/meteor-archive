@@ -2,9 +2,11 @@ name: Download Meteor Client
 
 on:
   schedule:
-    # Run every 5 minutes 
+    # Run every 5 minutes (may have delays, consider using external cron)
     - cron: '*/5 * * * *'
   workflow_dispatch:  # Allows manual triggering from GitHub Actions UI
+  repository_dispatch:  # Allows external services to trigger via API
+    types: [cron-trigger]
 
 permissions:
   contents: write  # Required to commit and push
@@ -12,6 +14,11 @@ permissions:
 jobs:
   download-meteor-client:
     runs-on: ubuntu-latest
+    # Accept both scheduled, manual, and external cron triggers
+    if: |
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'repository_dispatch'
     
     steps:
       - name: Checkout repository
