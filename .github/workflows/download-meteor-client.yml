@@ -1,0 +1,118 @@
+name: Download Meteor Client
+
+on:
+  workflow_run:
+    workflows: ["Build"]
+    types:
+      - completed
+    branches:
+      - '**'  # Triggers on all branches
+
+permissions:
+  contents: write  # Required to commit and push
+
+jobs:
+  download-meteor-client:
+    runs-on: ubuntu-latest
+    # Only trigger on successful Build workflow, but NOT "Build Pull Request"
+    if: |
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.name == 'Build'
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+        
+      - name: Download Meteor Client
+        id: download
+        run: |
+          echo "Downloading latest Meteor Client build..."
+          
+          # Try to download with filename from Content-Disposition header
+          curl -L -J -O "https://meteorclient.com/api/download?latest" || {
+            # Fallback: download without filename header
+            curl -L -o meteor-client-temp.jar "https://meteorclient.com/api/download?latest"
+            
+            # Extract filename from jar metadata
+            TEMP_DIR=$(mktemp -d)
+            unzip -q meteor-client-temp.jar -d "$TEMP_DIR" 2>/dev/null || true
+            
+            # Try to get version from fabric.mod.json
+            if [ -f "$TEMP_DIR/fabric.mod.json" ]; then
+              VERSION=$(grep -o '"version"[^,}]*' "$TEMP_DIR/fabric.mod.json" | head -1 | sed 's/.*"version"[^"]*"\([^"]*\)".*/\1/' | tr -d '"' | tr -d ' ' | tr -d ',')
+            elif [ -f "$TEMP_DIR/META-INF/maven/com.github.meteorclient/meteor-client/pom.properties" ]; then
+              VERSION=$(grep "^version=" "$TEMP_DIR/META-INF/maven/com.github.meteorclient/meteor-client/pom.properties" | cut -d'=' -f2 | tr -d '\r' | tr -d '\n')
+            fi
+            
+            rm -rf "$TEMP_DIR"
+            
+            if [ ! -z "$VERSION" ]; then
+              FILENAME="meteor-client-${VERSION}.jar"
+              mv meteor-client-temp.jar "$FILENAME"
+            else
+              # Last resort: check if any jar file was downloaded
+              if [ -f meteor-client-temp.jar ]; then
+                FILENAME="meteor-client-unknown-$(date +%s).jar"
+                mv meteor-client-temp.jar "$FILENAME"
+              else
+                echo "Error: Failed to download file"
+                exit 1
+              fi
+            fi
+          }
+          
+          # Get the actual filename (either from curl -J or from our fallback)
+          FILENAME=$(ls -1 *.jar 2>/dev/null | head -1)
+          if [ -z "$FILENAME" ]; then
+            echo "Error: Could not determine filename"
+            exit 1
+          fi
+          
+          echo "Detected filename: $FILENAME"
+          echo "filename=$FILENAME" >> $GITHUB_OUTPUT
+          
+          # Extract Minecraft version from filename (format: meteor-client-1.21.8-69.jar)
+          # Pattern: meteor-client-MINECRAFT_VERSION-BUILD.jar
+          MC_VERSION=$(echo "$FILENAME" | sed -n 's/meteor-client-\([0-9]\+\.[0-9]\+\.[0-9]\+\).*/\1/p')
+          if [ -z "$MC_VERSION" ]; then
+            # Try to extract first three numbers (Minecraft version pattern)
+            MC_VERSION=$(echo "$FILENAME" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+          fi
+          
+          if [ -z "$MC_VERSION" ]; then
+            echo "Error: Could not extract Minecraft version from filename: $FILENAME"
+            exit 1
+          fi
+          
+          echo "Minecraft version: $MC_VERSION"
+          echo "mc_version=$MC_VERSION" >> $GITHUB_OUTPUT
+          
+      - name: Create version directory and save file
+        run: |
+          FILENAME="${{ steps.download.outputs.filename }}"
+          MC_VERSION="${{ steps.download.outputs.mc_version }}"
+          
+          if [ -z "$MC_VERSION" ]; then
+            echo "Error: Could not extract Minecraft version"
+            exit 1
+          fi
+          
+          # Create directory for Minecraft version
+          mkdir -p "$MC_VERSION"
+          
+          # Move file to version directory
+          mv "$FILENAME" "$MC_VERSION/"
+          
+          echo "Saved $FILENAME to $MC_VERSION/"
+          ls -lh "$MC_VERSION/"
+          
+      - name: Commit and push changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add .
+          git diff --staged --quiet || git commit -m "Add Meteor Client build for Minecraft ${{ steps.download.outputs.mc_version }}"
+          git push
+
