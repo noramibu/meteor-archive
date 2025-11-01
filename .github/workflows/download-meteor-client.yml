@@ -87,8 +87,18 @@ jobs:
             exit 1
           fi
           
+          # Extract build number (format: meteor-client-1.21.8-69.jar)
+          # Remove meteor-client- and .jar, then extract the last number after the Minecraft version
+          BUILD_NUM=$(echo "$FILENAME" | sed -n "s/meteor-client-${MC_VERSION}-\([0-9]\+\).jar/\1/p")
+          if [ -z "$BUILD_NUM" ]; then
+            # Try alternative pattern: extract number after last dash before .jar
+            BUILD_NUM=$(echo "$FILENAME" | sed -n 's/.*-\([0-9]\+\)\.jar/\1/p')
+          fi
+          
           echo "Minecraft version: $MC_VERSION"
+          echo "Build number: $BUILD_NUM"
           echo "mc_version=$MC_VERSION" >> $GITHUB_OUTPUT
+          echo "build_num=$BUILD_NUM" >> $GITHUB_OUTPUT
           
       - name: Create version directory and save file
         run: |
@@ -114,6 +124,6 @@ jobs:
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           git add .
-          git diff --staged --quiet || git commit -m "Add Meteor Client build for Minecraft ${{ steps.download.outputs.mc_version }}"
+          git diff --staged --quiet || git commit -m "Add Meteor Client build ${{ steps.download.outputs.build_num }} for Minecraft ${{ steps.download.outputs.mc_version }}"
           git push
 
