@@ -72,25 +72,13 @@ jobs:
           echo "Detected filename: $FILENAME"
           echo "filename=$FILENAME" >> $GITHUB_OUTPUT
           
-          # Extract Minecraft version from filename (format: meteor-client-1.21.8-69.jar)
-          # Pattern: meteor-client-MINECRAFT_VERSION-BUILD.jar
-          MC_VERSION=$(echo "$FILENAME" | sed -n 's/meteor-client-\([0-9]\+\.[0-9]\+\.[0-9]\+\).*/\1/p')
-          if [ -z "$MC_VERSION" ]; then
-            # Try to extract first three numbers (Minecraft version pattern)
-            MC_VERSION=$(echo "$FILENAME" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
-          fi
-          
-          if [ -z "$MC_VERSION" ]; then
-            echo "Error: Could not extract Minecraft version from filename: $FILENAME"
+          # Extract Minecraft version and build number, including versions such as 26.2.
+          if [[ "$FILENAME" =~ ^meteor-client-([0-9]+(\.[0-9]+)+)-([0-9]+)\.jar$ ]]; then
+            MC_VERSION="${BASH_REMATCH[1]}"
+            BUILD_NUM="${BASH_REMATCH[3]}"
+          else
+            echo "Error: Unexpected filename: $FILENAME"
             exit 1
-          fi
-          
-          # Extract build number (format: meteor-client-1.21.8-69.jar)
-          # Remove meteor-client- and .jar, then extract the last number after the Minecraft version
-          BUILD_NUM=$(echo "$FILENAME" | sed -n "s/meteor-client-${MC_VERSION}-\([0-9]\+\).jar/\1/p")
-          if [ -z "$BUILD_NUM" ]; then
-            # Try alternative pattern: extract number after last dash before .jar
-            BUILD_NUM=$(echo "$FILENAME" | sed -n 's/.*-\([0-9]\+\)\.jar/\1/p')
           fi
           
           echo "Minecraft version: $MC_VERSION"
